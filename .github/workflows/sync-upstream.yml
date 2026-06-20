@@ -1,0 +1,49 @@
+name: sync-upstream
+
+# Mantiene este fork al día con paperclipai/paperclip sin perder
+# docker-compose.coolify.yml (el compose corregido para el deploy en Coolify).
+# Sincronizar NO redespliega: el contenedor sigue en la última build buena
+# hasta que dispares un redeploy en Coolify manualmente.
+
+on:
+  schedule:
+    - cron: '17 4 * * 1'   # lunes 04:17 UTC
+  workflow_dispatch: {}     # permite ejecutarlo a mano desde la pestaña Actions
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sync-upstream
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout fork (master, historia completa)
+        uses: actions/checkout@v4
+        with:
+          ref: master
+          fetch-depth: 0
+
+      - name: Identidad git
+        run: |
+          git config user.name "fork-sync-bot"
+          git config user.email "fork-sync-bot@users.noreply.github.com"
+
+      - name: Traer upstream
+        run: |
+          git remote add upstream https://github.com/paperclipai/paperclip.git
+          git fetch upstream master
+
+      - name: Merge upstream/master -> master
+        run: |
+          git merge --no-edit upstream/master
+
+      - name: Verificar que el compose de Coolify sigue presente
+        run: |
+          test -f docker-compose.coolify.yml || { echo "::error::docker-compose.coolify.yml se perdió en el merge"; exit 1; }
+
+      - name: Push al fork
+        run: git push origin master
